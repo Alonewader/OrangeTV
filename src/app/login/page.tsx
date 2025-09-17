@@ -85,18 +85,23 @@ function LoginPageClient() {
   const [machineCodeGenerated, setMachineCodeGenerated] = useState(false);
   const [, setShowBindOption] = useState(false);
   const [bindMachineCode, setBindMachineCode] = useState(false);
+  const [deviceCodeEnabled, setDeviceCodeEnabled] = useState(true); // 站点是否启用设备码功能
 
   const { siteName } = useSite();
 
   // 在客户端挂载后设置配置并生成机器码
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const storageType = (window as any).RUNTIME_CONFIG?.STORAGE_TYPE;
-      setShouldAskUsername(storageType && storageType !== 'localstorage');
+      const runtimeConfig = (window as any).RUNTIME_CONFIG;
+      const storageType = runtimeConfig?.STORAGE_TYPE;
+      const requireDeviceCode = runtimeConfig?.REQUIRE_DEVICE_CODE;
 
-      // 生成机器码和设备信息
+      setShouldAskUsername(storageType && storageType !== 'localstorage');
+      setDeviceCodeEnabled(requireDeviceCode !== false); // 默认启用，除非明确设置为 false
+
+      // 只有在启用设备码功能时才生成机器码和设备信息
       const generateMachineInfo = async () => {
-        if (MachineCode.isSupported()) {
+        if (requireDeviceCode !== false && MachineCode.isSupported()) {
           try {
             const code = await MachineCode.generateMachineCode();
             const info = await MachineCode.getDeviceInfo();
@@ -128,8 +133,8 @@ function LoginPageClient() {
         ...(shouldAskUsername ? { username } : {}),
       };
 
-      // 如果需要机器码或用户选择绑定，则发送机器码
-      if ((requireMachineCode || bindMachineCode) && machineCode) {
+      // 只有在启用设备码功能时才处理机器码逻辑
+      if (deviceCodeEnabled && (requireMachineCode || bindMachineCode) && machineCode) {
         requestData.machineCode = machineCode;
       }
 
@@ -142,8 +147,8 @@ function LoginPageClient() {
       const data = await res.json().catch(() => ({}));
 
       if (res.ok) {
-        // 登录成功，如果用户选择绑定机器码，则绑定
-        if (bindMachineCode && machineCode && shouldAskUsername) {
+        // 登录成功，如果启用设备码功能且用户选择绑定机器码，则绑定
+        if (deviceCodeEnabled && bindMachineCode && machineCode && shouldAskUsername) {
           try {
             await fetch('/api/machine-code', {
               method: 'POST',
@@ -242,8 +247,8 @@ function LoginPageClient() {
             </label>
           </div>
 
-          {/* 机器码信息显示 */}
-          {machineCodeGenerated && shouldAskUsername && (
+          {/* 机器码信息显示 - 只有在启用设备码功能时才显示 */}
+          {deviceCodeEnabled && machineCodeGenerated && shouldAskUsername && (
             <div className='space-y-4'>
               <div className='bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4'>
                 <div className='flex items-center space-x-2 mb-2'>
@@ -262,17 +267,22 @@ function LoginPageClient() {
 
               {/* 绑定选项 */}
               {!requireMachineCode && (
-                <div className='flex items-center space-x-3'>
-                  <input
-                    id='bindMachineCode'
-                    type='checkbox'
-                    checked={bindMachineCode}
-                    onChange={(e) => setBindMachineCode(e.target.checked)}
-                    className='w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600'
-                  />
-                  <label htmlFor='bindMachineCode' className='text-sm text-gray-700 dark:text-gray-300'>
-                    绑定此设备（提升账户安全性）
-                  </label>
+                <div className='space-y-2'>
+                  <div className='flex items-center space-x-3'>
+                    <input
+                      id='bindMachineCode'
+                      type='checkbox'
+                      checked={bindMachineCode}
+                      onChange={(e) => setBindMachineCode(e.target.checked)}
+                      className='w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600'
+                    />
+                    <label htmlFor='bindMachineCode' className='text-sm text-gray-700 dark:text-gray-300'>
+                      绑定此设备（提升账户安全性）
+                    </label>
+                  </div>
+                  {/* <p className='text-xs text-gray-500 dark:text-gray-400 ml-7'>
+                    // 管理员可选择不绑定机器码直接登录
+                  </p> */}
                 </div>
               )}
             </div>
@@ -289,7 +299,7 @@ function LoginPageClient() {
               !password ||
               loading ||
               (shouldAskUsername && !username) ||
-              (machineCodeGenerated && shouldAskUsername && !requireMachineCode && !bindMachineCode)
+              (deviceCodeEnabled && machineCodeGenerated && shouldAskUsername && !requireMachineCode && !bindMachineCode)
             }
             className='inline-flex w-full justify-center rounded-lg bg-blue-600 py-3 text-base font-semibold text-white shadow-lg transition-all duration-200 hover:from-blue-600 hover:to-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
           >
